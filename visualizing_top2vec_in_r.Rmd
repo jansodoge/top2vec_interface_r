@@ -1,0 +1,103 @@
+---
+title: "Visualizing top2vec models in R"
+author: "Jan Sodoge"
+date: "1/16/2022"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+---
+
+```{r setup, include=FALSE,  warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggthemes)
+source("functions.R")
+
+```
+
+Top2vec is a topic modelling approach developed by Angelov (2020), providing several advantages over traditional topic models such as LDA. It takes advantage of semantic embedding to derive topics from text data. You can read more about it [here](https://github.com/ddangelov/Top2Vec).
+
+The package is implement in Python (top2vec), and respective models can be trained within less than four lines of code. Here, I seek to provide some R functions (which interact with the top2vec package in Python via reticulate) that allow easy export of the top2vec model outputs via R. Thereby, results of the top2vec models can be immediately visualized and analyzed in the R programming language (instead of using Python). The remainder of this document guides a tutorial on how to use these functions provided by this repository.
+
+## Prerequisites
+
+Since top2vec models are best to train directly within Python, the scope of the functions provided here does not cover training top2vec models (see [here](https://github.com/ddangelov/Top2Vec) on how to train top2vec models). Instead, this guide starts at importing a trained top2vec model file. However, any of these functions presented below requires using the *reticulate* package. First, to set the Python environment (i.e. one where top2vec is installed). Second, to import the python functions (*functions.py*) used to interact with the top2vec package.
+
+```{r}
+library(reticulate)
+reticulate::use_python("/home/jan/anaconda3/envs/machine_learning_nlp/bin/python")
+reticulate::source_python("functions.py")
+
+```
+
+Once reticulate is set up, we're ready to import a top2vec model. Here, we'll import an example model (identical to the top2vec GitHub repository).
+
+```{r}
+top2vec_model <- read_top2vec("example_model_newsgroups")
+
+```
+
+## Number of topics, topic sizes, topic words
+
+Using the *get_top_number* function, we get returned the number of topics identified. Here, we find 169 topics.
+
+```{r}
+number_topics <- get_number_of_topics(top2vec_model)
+print(number_topics)
+
+```
+
+The sizes of topics are available through *get_topic_sizes.* We find the first topic to consist of 942 topics.
+
+```{r, message=FALSE, warning=FALSE, fig.height=10}
+get_topic_sizes(top2vec_model) %>% 
+  head(5)
+
+get_topic_sizes(top2vec_model) %>% 
+  mutate(topic_number = as.factor(topic_number)) %>% 
+  ggplot(aes(x = topic_number, y = observations_per_topic))+
+  geom_bar(stat = "identity", size = .2, color = "green")+
+  coord_flip()
+```
+
+## 
+
+The keywords, their importance for each topic can be assessed via the *get_topics* function. It returns a tibble consisting of {word, score, topic_number}. Below, I visualize this output for the most important topics. The graphic is inspired [by the blog post by Julia Silge](https://juliasilge.com/blog/evaluating-stm/).
+
+```{r, warning=FALSE, message=FALSE}
+get_topics(top2vec_model) %>% 
+  group_by(topic_number) %>% 
+  summarise(terms = list(word)) %>%
+  mutate(terms = map(terms, paste, collapse = ", ")) %>% 
+  unnest() %>% 
+  dplyr::left_join(get_topic_sizes(top2vec_model),
+                   by = c("topic_number" = "topic_number")) %>% 
+  dplyr::filter(topic_number < 5) %>% 
+  ggplot(aes(topic_number, observations_per_topic, label = terms, fill = topic_number)) +
+  geom_col(show.legend = FALSE) +
+  geom_text(hjust = 0, nudge_y = 0.0005,, size = 2,
+            family = "IBMPlexSans") +
+  scale_y_continuous(breaks = c(0,500,1000), labels = c(0,500, 1000),
+                     limits = c(0, 2500))+
+  xlab("Topics")+
+  coord_flip() +
+  theme_tufte(base_family = "IBMPlexSans", ticks = FALSE) +
+  theme(plot.title = element_text(size = 16,
+                                  family="IBMPlexSans-Bold"),
+        plot.subtitle = element_text(size = 13)) +
+  labs(x = NULL, y = expression(gamma),
+       title = "Top 5 topics by prevalence in the example corpus",
+       subtitle = "With the top words that contribute to each topic")+
+    ylab("Topic size")
+
+
+```
+
+## Getting similar words
+
+Since the top2vec model is based on word embedding, we can search for similar words. get_similar_words
+
+```{r}
+get_similiar_words(top2vec_model, "car", 10)
+
+```
